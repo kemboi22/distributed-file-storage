@@ -2,9 +2,24 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"testing"
 )
+
+func newStore() *Store {
+	opts := StoreOpts{
+		PathTransformFunc: CASPathTransformFunc,
+	}
+	s := NewStore(opts)
+	return s
+}
+
+func teardown(t *testing.T, s *Store) {
+	if err := s.Clear(); err != nil {
+		t.Error(err)
+	}
+}
 
 func TestPathTransformFunc(t *testing.T) {
 	key := "momsbestpic"
@@ -36,26 +51,31 @@ func TestStoreDeleteKey(t *testing.T) {
 }
 
 func TestStore(t *testing.T) {
-	opts := StoreOpts{
-		PathTransformFunc: CASPathTransformFunc,
-	}
-	s := NewStore(opts)
-	key := "momsbestpic"
-	data := []byte("Some jpg bytes")
-	if err := s.writeStream(key, bytes.NewReader(data)); err != nil {
-		t.Error(err)
-	}
+	s := newStore()
+	defer teardown(t, s)
+	for i := range 50 {
+		key := fmt.Sprintf("momsbestpic_%d", i)
+		data := []byte("Some jpg bytes")
+		if err := s.writeStream(key, bytes.NewReader(data)); err != nil {
+			t.Error(err)
+		}
 
-	r, err := s.Read(key)
-	if err != nil {
-		t.Error(err)
+		r, err := s.Read(key)
+		if err != nil {
+			t.Error(err)
+		}
+		b, err := io.ReadAll(r)
+		if err != nil {
+			t.Error(err)
+		}
+		if string(b) != string(data) {
+			t.Errorf("data received %s data expected %s", string(b), string(data))
+		}
+		s.Delete(key)
+
+		if ok := s.Has(key); ok {
+			t.Errorf("expected to not have key %s", key)
+		}
+
 	}
-	b, err := io.ReadAll(r)
-	if err != nil {
-		t.Error(err)
-	}
-	if string(b) != string(data) {
-		t.Errorf("data received %s data expected %s", string(b), string(data))
-	}
-	s.Delete(key)
 }
